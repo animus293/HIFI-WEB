@@ -612,6 +612,19 @@ h1, h2, h3, h4 { color: var(--text); font-weight: 600; letter-spacing: -0.02em; 
   z-index: 10;
 }
 
+/* Composer-focused (mobile, keyboard up on "Type a message…"): collapse the
+   top nav so the chat header + messages pull up and the chat area gets bigger.
+   .app-body is flex:1, so hiding the nav automatically grows it into the freed
+   space — no manual height math, and restoring the nav returns it to the exact
+   same position. Gated by the JS-added class (mobile only); typing in the nav
+   search box never triggers it because composer-focused only comes from the
+   #messageInput focus handler. */
+body.composer-focused .top-nav { display: none; }
+/* The top-nav normally carries the status-bar safe-area padding; while it is
+   collapsed, hand that padding to the app body so content never slides under
+   the notch / Dynamic Island on edge-to-edge iOS. */
+body.composer-focused .app-body { padding-top: env(safe-area-inset-top); }
+
 
 .back-btn {
   display: none;
