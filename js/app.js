@@ -32,6 +32,9 @@ const currentViewportHeight = () => {
 
 let lastAppliedVh = null;
 let lastAppliedHeight = null;
+// Set once the keyboard actually shrank the viewport, so the auto-clear below
+// can never fire during the focusin->keyboard-open race (vv shrinks late on iOS).
+let keyboardShrunk = false;
 const syncVisualViewport = () => {
   const h = `${currentViewportHeight()}px`;
   const vh = `${parseFloat(h) * 0.01}px`;
@@ -44,6 +47,18 @@ const syncVisualViewport = () => {
   if (chatAppEl && lastAppliedHeight !== h) {
     chatAppEl.style.height = h;
     lastAppliedHeight = h;
+  }
+  // Auto-clear the keyboard guard if the keyboard closes without a focusout
+  // (Android back button / OS dismiss): only act after the viewport actually
+  // grew back to full height.
+  if (IS_MOBILE_APP) {
+    const vp = parseFloat(h);
+    if (vp < window.innerHeight - 1) keyboardShrunk = true;
+    else if (keyboardShrunk) {
+      keyboardShrunk = false;
+      document.body.classList.remove('keyboard-open');
+      document.documentElement.classList.remove('keyboard-lock');
+    }
   }
 };
 
@@ -72,16 +87,46 @@ const isEditableTarget = (t) =>
 // only those devices have a soft keyboard, so only they get the keyboard-open
 // guard that keeps floating elements (⌄ jump button) clear of the keyboard.
 const IS_MOBILE_APP = document.body.classList.contains('native-app');
+// Delayed removal so the ⌄ button doesn't flash back in while the keyboard is
+// still sliding down after blur (~300ms animation). Cleared on re-focus.
+let keyboardCloseTimer = null;
+// The app never scrolls the document itself, so the saved position is 0 — but we
+// capture/restore it anyway because iOS Safari can bump window.scrollY when it
+// pans the page on input focus.
+let savedDocScrollY = 0;
 document.addEventListener('focusin', (e) => {
   if (isEditableTarget(e.target)) {
-    if (IS_MOBILE_APP) document.body.classList.add('keyboard-open');
+    if (IS_MOBILE_APP) {
+      clearTimeout(keyboardCloseTimer);
+      document.body.classList.add('keyboard-open');
+      // Lock the root document so iOS Safari cannot pan/scroll the page to reveal
+      // the focused input — that pan is what shifts the fixed background.
+      savedDocScrollY = window.scrollY || 0;
+      document.documentElement.classList.add('keyboard-lock');
+    }
     scheduleKeyboardSync();
   }
 });
 document.addEventListener('focusout', (e) => {
   if (isEditableTarget(e.target)) {
-    if (IS_MOBILE_APP) document.body.classList.remove('keyboard-open');
+    if (IS_MOBILE_APP) {
+      clearTimeout(keyboardCloseTimer);
+      keyboardCloseTimer = setTimeout(() => {
+        document.body.classList.remove('keyboard-open');
+        document.documentElement.classList.remove('keyboard-lock');
+        window.scrollTo(0, savedDocScrollY);
+      }, KEYBOARD_SETTLE_MS);
+    }
     scheduleKeyboardSync();
+  }
+});
+// If the app is backgrounded while the input is focused (or Android's back button
+// dismisses the keyboard without blurring), make sure keyboard-open/-lock can't stick.
+document.addEventListener('visibilitychange', () => {
+  if (IS_MOBILE_APP && document.hidden) {
+    clearTimeout(keyboardCloseTimer);
+    document.body.classList.remove('keyboard-open');
+    document.documentElement.classList.remove('keyboard-lock');
   }
 });
 
@@ -4691,12 +4736,14 @@ messageInput.addEventListener('keydown', (e) => {
 messageInput.addEventListener('focus', () => {
   scrollToBottom();
   // Tapping the composer opens the soft keyboard — close the (+) overflow menu
-  // and hide the ⌄ jump button so neither can end up floating detached over the
-  // keyboard (iOS). Belt-and-braces alongside the .keyboard-open CSS guard.
+  // and (on mobile) hide the ⌄ jump button so neither can end up floating
+  // detached over the keyboard (iOS). Belt-and-braces alongside the CSS guard.
   const ov = document.getElementById('overflowMenu');
   if (ov) ov.classList.remove('show');
-  const jb = document.getElementById('jumpToLatestBtn');
-  if (jb) jb.classList.remove('show');
+  if (IS_MOBILE_APP) {
+    const jb = document.getElementById('jumpToLatestBtn');
+    if (jb) jb.classList.remove('show');
+  }
 });
 
 messageInput.addEventListener('input', () => {
