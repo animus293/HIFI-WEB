@@ -150,6 +150,13 @@ document.addEventListener('focusin', (e) => {
     // cleared by this focusin, so relying on the timer alone is not enough).
     if (IS_MOBILE_APP) {
       setComposerFocused(isComposerInput(e.target));
+      // While the composer is focused the nav collapses (height:0 + overflow:
+      // hidden), which would clip the mobile nav dropdown — close it the
+      // moment the composer takes focus so it can never be half-cut off.
+      if (isComposerInput(e.target)) {
+        const dd = document.getElementById('navDropdown');
+        if (dd) dd.classList.remove('show');
+      }
     }
     scheduleKeyboardSync();
   }
@@ -158,11 +165,14 @@ document.addEventListener('focusout', (e) => {
   if (isEditableTarget(e.target)) {
     if (IS_MOBILE_APP) {
       clearTimeout(keyboardCloseTimer);
+      // Restore the composer collapse IMMEDIATELY (not on the settle timer):
+      // the CSS transition slides the top nav back in PARALLEL with the
+      // keyboard's own ~300ms close animation, so it feels instant and smooth
+      // instead of popping back a beat later. keyboard-open still waits for
+      // the settle timer so the ⌄ jump button doesn't flash back mid-slide.
+      setComposerFocused(false);
       keyboardCloseTimer = setTimeout(() => {
         document.body.classList.remove('keyboard-open');
-        // Remove the composer collapse on the same settle timer so the top nav
-        // doesn't pop back in while the keyboard is still sliding down.
-        setComposerFocused(false);
         window.scrollTo(0, savedDocScrollY);
       }, KEYBOARD_SETTLE_MS);
     }
