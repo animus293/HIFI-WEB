@@ -336,6 +336,21 @@ html, body {
   text-size-adjust: 100%;
 }
 
+/* iOS scroll lock: while an input is focused, pin the root document so Safari
+   cannot pan the page to reveal the input — that pan is what makes the fixed
+   app background visibly move when the soft keyboard opens. The class is added
+   on focusin / removed on blur by the viewport-height manager (js/app.js).
+   position:fixed on html+body removes all scrollable overflow, so iOS has
+   nowhere to pan. */
+html.keyboard-lock,
+html.keyboard-lock body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   background: var(--bg-page);
