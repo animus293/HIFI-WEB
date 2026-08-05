@@ -610,16 +610,43 @@ h1, h2, h3, h4 { color: var(--text); font-weight: 600; letter-spacing: -0.02em; 
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-glass);
   z-index: 10;
+  /* Smooth composer-focused collapse/restore: the nav glides up + fades when
+     the keyboard opens and glides back in PARALLEL with the keyboard closing
+     (the JS removes composer-focused on blur, not after the 350ms settle). */
+  transition: height 0.32s var(--ease-spring),
+              padding 0.32s var(--ease-spring),
+              border-width 0.32s var(--ease-spring),
+              opacity 0.22s ease,
+              transform 0.32s var(--ease-spring);
 }
 
 /* Composer-focused (mobile, keyboard up on "Type a message…"): collapse the
    top nav so the chat header + messages pull up and the chat area gets bigger.
-   .app-body is flex:1, so hiding the nav automatically grows it into the freed
-   space — no manual height math, and restoring the nav returns it to the exact
-   same position. Gated by the JS-added class (mobile only); typing in the nav
-   search box never triggers it because composer-focused only comes from the
-   #messageInput focus handler. */
-body.composer-focused .top-nav { display: none; }
+   .app-body is flex:1, so collapsing the nav's box automatically grows the
+   body into the freed space — no manual height math, and restoring the nav
+   returns it to the exact same position. Gated by the JS-added class (mobile
+   only); typing in the nav search box never triggers it because
+   composer-focused only comes from the #messageInput focus handler.
+
+   The collapse/restore is a smooth animation (height + padding + border + a
+   slight slide-up + fade) instead of a hard display:none cut, so the nav
+   glides away when the keyboard opens and glides back in parallel with the
+   keyboard closing — no pop, no perceived lag. overflow:hidden is applied
+   ONLY while the class is present: it clips the nav content as the box
+   shrinks, and because it is not transitionable it snaps off the instant the
+   class is removed, so the mobile nav dropdown (position:fixed inside the
+   nav) can never be clipped while it is open. */
+body.composer-focused .top-nav {
+  height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  border-bottom-width: 0;
+  opacity: 0;
+  transform: translateY(-100%);
+  overflow: hidden;
+  pointer-events: none;
+}
 /* The top-nav normally carries the status-bar safe-area padding; while it is
    collapsed, hand that padding to the app body so content never slides under
    the notch / Dynamic Island on edge-to-edge iOS. */
