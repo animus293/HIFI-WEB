@@ -57,7 +57,6 @@ const syncVisualViewport = () => {
     else if (keyboardShrunk) {
       keyboardShrunk = false;
       document.body.classList.remove('keyboard-open');
-      document.documentElement.classList.remove('keyboard-lock');
     }
   }
 };
@@ -70,10 +69,37 @@ const scheduleKeyboardSync = () => {
   keyboardSettleTimer = setTimeout(syncVisualViewport, KEYBOARD_SETTLE_MS);
 };
 
+// ===== iOS Visual Viewport Pan Compensation =====
+// When the soft keyboard opens, iOS Safari pans the page (window.scrollY > 0)
+// to keep the focused input visible, and on iOS 15+ fixed elements move with
+// that pan — which is the "background moving" glitch. The app is a fixed shell
+// that lives at scroll 0, so restoring scrollY to 0 cancels the pan and keeps
+// the background perfectly still. scrollTo(0,0) is idempotent (no-op once at 0),
+// so it cannot oscillate or fight user scrolling.
+const compensateVisualViewportPan = () => {
+  if (!IS_MOBILE_APP) return;
+  // Gate on our own keyboard-open state (focusin/focusout driven) — more precise
+  // than the vv.height heuristic, which is also true when the iOS URL bar shows.
+  if (!document.body.classList.contains('keyboard-open')) return;
+  const scrollingEl = document.scrollingElement || document.documentElement;
+  if ((window.pageYOffset || 0) !== 0 || (scrollingEl && scrollingEl.scrollTop !== 0)) {
+    window.scrollTo(0, 0);
+  }
+};
+
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', syncVisualViewport);
   window.visualViewport.addEventListener('scroll', syncVisualViewport);
+  window.visualViewport.addEventListener('resize', compensateVisualViewportPan);
+  window.visualViewport.addEventListener('scroll', compensateVisualViewportPan);
 }
+// The pan often surfaces as a plain document scroll (window.scrollY), so listen
+// there too — the handler is idempotent + gated, so this is free. Caveat: if a
+// given iOS version pans purely the visual viewport (offsetTop changes while
+// scrollY stays 0), nothing can counter-scroll it in JS; the --vh resize still
+// leaves the app sized correctly above the keyboard.
+window.addEventListener('scroll', compensateVisualViewportPan);
+window.addEventListener('resize', compensateVisualViewportPan);
 // Layout-viewport resize + orientation change (covers desktop, older Android, and
 // browsers without visualViewport support).
 window.addEventListener('resize', syncVisualViewport);
@@ -99,10 +125,10 @@ document.addEventListener('focusin', (e) => {
     if (IS_MOBILE_APP) {
       clearTimeout(keyboardCloseTimer);
       document.body.classList.add('keyboard-open');
-      // Lock the root document so iOS Safari cannot pan/scroll the page to reveal
-      // the focused input — that pan is what shifts the fixed background.
+      // The pan-compensation above restores scrollY when iOS pans the page to
+      // reveal the focused input. Remember the (normally 0) scroll position so
+      // it can be restored on blur as well.
       savedDocScrollY = window.scrollY || 0;
-      document.documentElement.classList.add('keyboard-lock');
     }
     scheduleKeyboardSync();
   }
@@ -113,7 +139,6 @@ document.addEventListener('focusout', (e) => {
       clearTimeout(keyboardCloseTimer);
       keyboardCloseTimer = setTimeout(() => {
         document.body.classList.remove('keyboard-open');
-        document.documentElement.classList.remove('keyboard-lock');
         window.scrollTo(0, savedDocScrollY);
       }, KEYBOARD_SETTLE_MS);
     }
@@ -126,7 +151,6 @@ document.addEventListener('visibilitychange', () => {
   if (IS_MOBILE_APP && document.hidden) {
     clearTimeout(keyboardCloseTimer);
     document.body.classList.remove('keyboard-open');
-    document.documentElement.classList.remove('keyboard-lock');
   }
 });
 
