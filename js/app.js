@@ -57,6 +57,10 @@ const syncVisualViewport = () => {
     else if (keyboardShrunk) {
       keyboardShrunk = false;
       document.body.classList.remove('keyboard-open');
+      // Android back button / OS dismiss can close the keyboard without a
+      // focusout — clear the composer collapse too so the top nav can never
+      // stay hidden (same sticky-guard rationale as keyboard-open).
+      document.body.classList.remove('composer-focused');
     }
   }
 };
@@ -120,6 +124,14 @@ let keyboardCloseTimer = null;
 // capture/restore it anyway because iOS Safari can bump window.scrollY when it
 // pans the page on input focus.
 let savedDocScrollY = 0;
+// True when the focused editable is the chat COMPOSER specifically (vs. the
+// nav search box, login fields, modals…). Powers the "collapse the top nav for
+// a bigger chat area while the keyboard is up" behavior — only the composer
+// triggers it, so typing in the search box never hides the nav it lives in.
+const isComposerInput = (t) => !!t && t.id === 'messageInput';
+const setComposerFocused = (on) => {
+  document.body.classList.toggle('composer-focused', on);
+};
 document.addEventListener('focusin', (e) => {
   if (isEditableTarget(e.target)) {
     if (IS_MOBILE_APP) {
@@ -130,6 +142,15 @@ document.addEventListener('focusin', (e) => {
       // it can be restored on blur as well.
       savedDocScrollY = window.scrollY || 0;
     }
+    // Composer-only collapse: only when the message input itself is focused.
+    // ANY other editable (nav search, login fields, thread input, modal
+    // inputs) must restore the nav IMMEDIATELY — the search box lives INSIDE
+    // the top-nav, so leaving composer-focused on while the user types in it
+    // would hide the very input they're using (the pending blur timer gets
+    // cleared by this focusin, so relying on the timer alone is not enough).
+    if (IS_MOBILE_APP) {
+      setComposerFocused(isComposerInput(e.target));
+    }
     scheduleKeyboardSync();
   }
 });
@@ -139,6 +160,9 @@ document.addEventListener('focusout', (e) => {
       clearTimeout(keyboardCloseTimer);
       keyboardCloseTimer = setTimeout(() => {
         document.body.classList.remove('keyboard-open');
+        // Remove the composer collapse on the same settle timer so the top nav
+        // doesn't pop back in while the keyboard is still sliding down.
+        setComposerFocused(false);
         window.scrollTo(0, savedDocScrollY);
       }, KEYBOARD_SETTLE_MS);
     }
@@ -146,11 +170,13 @@ document.addEventListener('focusout', (e) => {
   }
 });
 // If the app is backgrounded while the input is focused (or Android's back button
-// dismisses the keyboard without blurring), make sure keyboard-open/-lock can't stick.
+// dismisses the keyboard without blurring), make sure keyboard-open/-lock and the
+// composer collapse can't stick.
 document.addEventListener('visibilitychange', () => {
   if (IS_MOBILE_APP && document.hidden) {
     clearTimeout(keyboardCloseTimer);
     document.body.classList.remove('keyboard-open');
+    setComposerFocused(false);
   }
 });
 
