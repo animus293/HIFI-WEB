@@ -385,6 +385,23 @@ body.scroll-locked .search-results {
   overscroll-behavior: none !important;
 }
 
+/* Keyboard-open background lock (web) — active while the on-screen keyboard is
+   open. The JS guard blocks wheel/touchmove on everything except the chat
+   messages + open overlays; these rules stop any remaining chaining/glow.
+   The chat messages area itself stays fully scrollable. */
+body.kb-open,
+body.kb-open * {
+  overscroll-behavior: none !important;
+}
+/* Scoped with :not(.scroll-locked) so the overlay scroll-lock ALWAYS wins if a
+   modal opens while the keyboard is still up (identical !important specificity
+   would otherwise let this later rule silently defeat the modal lock). */
+body.kb-open:not(.scroll-locked) #chatMessages {
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  touch-action: pan-y;
+}
+
 input, textarea, select { font-size: 16px; }
 
 h1, h2, h3, h4 { color: var(--text); font-weight: 600; letter-spacing: -0.02em; font-family: 'Outfit', sans-serif; }
