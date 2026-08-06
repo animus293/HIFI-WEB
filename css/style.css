@@ -332,10 +332,11 @@
 
 html, body {
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
-
 
 body {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -369,6 +370,17 @@ body::before {
   overscroll-behavior: contain;
 }
 
+/* Background scroll lock — active while any overlay/drawer is open.
+   Prevents wheel/touch scrolling from ever moving the content behind a modal on web. */
+body.scroll-locked .conversations,
+body.scroll-locked .chat-messages,
+body.scroll-locked .user-panel-content,
+body.scroll-locked .search-results,
+body.scroll-locked .chat-info-body {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
 input, textarea, select { font-size: 16px; }
 
 h1, h2, h3, h4 { color: var(--text); font-weight: 600; letter-spacing: -0.02em; font-family: 'Outfit', sans-serif; }
@@ -385,7 +397,6 @@ h1, h2, h3, h4 { color: var(--text); font-weight: 600; letter-spacing: -0.02em; 
 .auth-container {
   min-height: 100vh;
   min-height: 100dvh;
-  min-height: calc(var(--vh, 1vh) * 100);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -581,13 +592,9 @@ h1, h2, h3, h4 { color: var(--text); font-weight: 600; letter-spacing: -0.02em; 
   left: 0;
   right: 0;
   bottom: 0;
-  /* Viewport height chain: 100vh fallback -> 100dvh (tracks URL bar) ->
-     calc(var(--vh,1vh)*100) JS-driven (tracks the soft keyboard on iOS). */
-  height: 100vh;
-  height: 100dvh;
-  height: calc(var(--vh, 1vh) * 100);
+  height: 100%;
   max-height: 100%;
-  background: var(--bg-page);
+  background: var(--glass-bg);
   z-index: 1;
   padding: 10px;
   gap: 10px;
@@ -610,47 +617,7 @@ h1, h2, h3, h4 { color: var(--text); font-weight: 600; letter-spacing: -0.02em; 
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-glass);
   z-index: 10;
-  /* Smooth composer-focused collapse/restore: the nav glides up + fades when
-     the keyboard opens and glides back in PARALLEL with the keyboard closing
-     (the JS removes composer-focused on blur, not after the 350ms settle). */
-  transition: height 0.32s var(--ease-spring),
-              padding 0.32s var(--ease-spring),
-              border-width 0.32s var(--ease-spring),
-              opacity 0.22s ease,
-              transform 0.32s var(--ease-spring);
 }
-
-/* Composer-focused (mobile, keyboard up on "Type a message…"): collapse the
-   top nav so the chat header + messages pull up and the chat area gets bigger.
-   .app-body is flex:1, so collapsing the nav's box automatically grows the
-   body into the freed space — no manual height math, and restoring the nav
-   returns it to the exact same position. Gated by the JS-added class (mobile
-   only); typing in the nav search box never triggers it because
-   composer-focused only comes from the #messageInput focus handler.
-
-   The collapse/restore is a smooth animation (height + padding + border + a
-   slight slide-up + fade) instead of a hard display:none cut, so the nav
-   glides away when the keyboard opens and glides back in parallel with the
-   keyboard closing — no pop, no perceived lag. overflow:hidden is applied
-   ONLY while the class is present: it clips the nav content as the box
-   shrinks, and because it is not transitionable it snaps off the instant the
-   class is removed, so the mobile nav dropdown (position:fixed inside the
-   nav) can never be clipped while it is open. */
-body.composer-focused .top-nav {
-  height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-top-width: 0;
-  border-bottom-width: 0;
-  opacity: 0;
-  transform: translateY(-100%);
-  overflow: hidden;
-  pointer-events: none;
-}
-/* The top-nav normally carries the status-bar safe-area padding; while it is
-   collapsed, hand that padding to the app body so content never slides under
-   the notch / Dynamic Island on edge-to-edge iOS. */
-body.composer-focused .app-body { padding-top: env(safe-area-inset-top); }
 
 
 .back-btn {
@@ -1048,12 +1015,6 @@ body.composer-focused .app-body { padding-top: env(safe-area-inset-top); }
   display: flex;
   animation: jumpPop 0.25s var(--ease-spring);
 }
-/* While the soft keyboard is open on mobile, the ⌄ button must never float over
-   it (it gets stranded mid-screen on iOS). The .keyboard-open class is toggled on
-   <body> by the viewport-height manager when an input gains/loses focus. */
-.keyboard-open .jump-to-latest {
-  display: none !important;
-}
 .jump-to-latest:hover {
   color: var(--accent);
   border-color: var(--accent);
@@ -1216,7 +1177,8 @@ body.composer-focused .app-body { padding-top: env(safe-area-inset-top); }
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
-.chat-messages > .message:first-child { margin-top: 0; }
+.chat-messages > .message:first-child { margin-top: auto; }
+.date-separator:first-child { margin-top: auto; }
 
 /* ===== SWIPE TO REPLY ICON ===== */
 .swipe-reply-icon {
@@ -1963,8 +1925,6 @@ emoji-picker {
   left: 0;
   width: 100vw;
   height: 100vh;
-  height: 100dvh;
-  height: calc(var(--vh, 1vh) * 100);
   z-index: 10000;
   display: flex;
   align-items: center;
@@ -2236,6 +2196,7 @@ emoji-picker {
   padding-top: calc(20px + env(safe-area-inset-top));
   padding-bottom: calc(20px + env(safe-area-inset-bottom));
   overflow-y: auto;
+  overscroll-behavior: contain;
   z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 .modal-overlay.show { opacity: 1; visibility: visible; }
@@ -2647,7 +2608,9 @@ emoji-picker {
   .chat-area { display: none; position: absolute; inset: 0; border-radius: var(--radius-md); z-index: 5; }
 
   .chat-app.chat-open .sidebar { display: none; }
-  .chat-app.chat-open .chat-area { display: flex; animation: slideInChat 0.3s var(--ease-spring); }
+  .chat-app.chat-open .chat-area { display: flex; position: fixed; inset: 0; border: 0; border-radius: 0; box-shadow: none; z-index: 50; transform-origin: 50% 55%; animation: chatCoverFull 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+  .chat-app.chat-open .top-nav { display: none; }
+  .chat-app.chat-open .chat-header { padding-top: calc(12px + env(safe-area-inset-top)); }
 
   .back-btn { display: flex; width: 36px; height: 36px; }
 
@@ -2683,7 +2646,7 @@ emoji-picker {
   .nav-icon-btn { display: none; }
   .nav-menu-btn { display: flex; flex-shrink: 0; }
   .nav-dropdown { position: absolute; top: calc(100% + 6px); right: 14px; left: auto; }
-  .chat-dropdown { top: calc(120px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); }
+  .chat-dropdown { top: calc(64px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); }
 
   .nav-subtitle { display: none; }
   .nav-user { padding: 0; border: none; background: transparent; margin-left: 0; }
@@ -2693,9 +2656,9 @@ emoji-picker {
   .chat-options-btn { display: flex; }
 }
 
-@keyframes slideInChat {
-  from { transform: translateX(6%); opacity: 0.4; }
-  to   { transform: translateX(0); opacity: 1; }
+@keyframes chatCoverFull {
+  from { transform: scale(0.82) translateY(5%); opacity: 0.35; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
 }
 
 @media (max-width: 380px) {
@@ -2829,6 +2792,7 @@ input[type="radio"]:checked + .pill-select {
   background: var(--overlay);
   z-index: 99;
   display: none;
+  overscroll-behavior: contain;
 }
 .thread-panel-overlay.open {
   display: block;
