@@ -4741,6 +4741,20 @@ messageInput.addEventListener('keydown', (e) => {
 });
 messageInput.addEventListener('focus', () => {
   scrollToBottom();
+  // Chrome Android ignores autocomplete="off" from page-load HTML but re-reads
+  // the attribute at focus time — set it dynamically so its autofill suggestion
+  // bar (key/card/pin icons) never appears above the keyboard.
+  messageInput.setAttribute('autocomplete', 'off');
+});
+
+// Same focus-time hardening for the other non-login inputs (thread reply, nav
+// search, group name). The login form keeps its autofill hints.
+['threadInput', 'searchInput', 'groupName'].forEach((id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('focus', () => {
+    el.setAttribute('autocomplete', 'off');
+  });
 });
 
 messageInput.addEventListener('input', () => {
