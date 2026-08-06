@@ -371,12 +371,16 @@ body::before {
 }
 
 /* Background scroll lock — active while any overlay/drawer is open.
-   Prevents wheel/touch scrolling from ever moving the content behind a modal on web. */
+   Prevents wheel/touch scrolling from ever moving the content behind a modal on web.
+   Uses #chatMessages (not .chat-messages) because a later rule sets
+   #chatMessages { overflow-y: auto !important } — the ID selector wins that
+   !important cascade, so the lock actually sticks.
+   NOTE: .chat-info-body is intentionally NOT locked — it's the scrollable
+   content INSIDE the chat info modal, so it must keep scrolling while open. */
 body.scroll-locked .conversations,
-body.scroll-locked .chat-messages,
+body.scroll-locked #chatMessages,
 body.scroll-locked .user-panel-content,
-body.scroll-locked .search-results,
-body.scroll-locked .chat-info-body {
+body.scroll-locked .search-results {
   overflow: hidden !important;
   overscroll-behavior: none !important;
 }
