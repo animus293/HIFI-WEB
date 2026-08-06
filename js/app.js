@@ -11,17 +11,59 @@ if (/Android/i.test(navigator.userAgent)) {
 // surfaces get the same behavior.
 const IS_ANDROID_DEVICE = document.body.classList.contains('is-android') || /Android/i.test(navigator.userAgent);
 
-// Android 10 & Mobile Visual Viewport Height Manager (Fixes keyboard layout on legacy Android WebViews)
+// Mobile Visual Viewport Manager — shrinks the app shell to the visible area when
+// the on-screen keyboard opens, on the WEB platform (iOS Safari/Chrome + Android
+// Chrome). Android native already resizes its own WebView, so there we only keep
+// the shell height in sync (historical behavior).
 if (window.visualViewport) {
+  const KB_THRESHOLD = 100; // px — ignore iOS toolbar/URL-bar changes (no real keyboard)
+  let kbOpen = false;
   const syncVisualViewport = () => {
-    const chatAppEl = document.getElementById('chatApp');
-    if (chatAppEl) {
-      chatAppEl.style.height = `${window.visualViewport.height}px`;
+    const vv = window.visualViewport;
+    const app = document.getElementById('chatApp');
+    if (!app) return;
+    const vvH = vv.height;
+    const layoutH = window.innerHeight;
+    const nowOpen = vvH < layoutH - KB_THRESHOLD;
+    const isWeb = !window.Capacitor;
+    if (nowOpen) {
+      // Keyboard open — shrink the shell to the visible area (like Android native).
+      app.style.height = `${vvH}px`;
+      if (isWeb) {
+        // iOS pans the visual viewport while fixed elements stay on the layout
+        // viewport; pin the shell to the visual viewport so the composer sits
+        // exactly above the keyboard. No-op on Android web (offsetTop stays 0).
+        app.style.top = `${vv.offsetTop}px`;
+        // Mobile chat-open: .chat-area becomes position:fixed; inset:0 (full
+        // viewport), so it ignores the shrunk shell. Pin its bottom to the
+        // keyboard height so the composer lands exactly above the keyboard.
+        // No-op anywhere else (static/flex context ignores `bottom`).
+        const area = document.getElementById('chatArea');
+        if (area) {
+          area.style.bottom = `${Math.max(0, layoutH - vvH)}px`;
+          area.style.top = `${vv.offsetTop}px`;
+        }
+        // Re-pin the newest message once, right after the shrink settles.
+        if (!kbOpen && typeof scrollToBottom === 'function') {
+          requestAnimationFrame(scrollToBottom);
+        }
+      }
+    } else if (isWeb) {
+      // Keyboard closed — restore the full-screen shell.
+      app.style.height = '';
+      app.style.top = '';
+      const area = document.getElementById('chatArea');
+      if (area) { area.style.bottom = ''; area.style.top = ''; }
+    } else {
+      // Native: mirror the visual height (historical behavior).
+      app.style.height = `${vvH}px`;
     }
+    kbOpen = nowOpen;
   };
   window.visualViewport.addEventListener('resize', syncVisualViewport);
   window.visualViewport.addEventListener('scroll', syncVisualViewport);
   document.addEventListener('DOMContentLoaded', syncVisualViewport);
+  syncVisualViewport();
 }
 
 // ===== BACKGROUND SCROLL LOCK (web platform) =====
