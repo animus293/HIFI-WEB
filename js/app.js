@@ -18,6 +18,37 @@ const IS_ANDROID_DEVICE = document.body.classList.contains('is-android') || /And
 if (window.visualViewport) {
   const KB_THRESHOLD = 100; // px — ignore iOS toolbar/URL-bar changes (no real keyboard)
   let kbOpen = false;
+  // While the keyboard is open on web, the BACKGROUND must stay locked: only the
+  // chat messages area (and any open overlay) may scroll — everything else is
+  // prevented from panning the page/visual viewport.
+  const KB_ALLOW_SELECTOR = '#chatMessages, .chat-input-area, .modal-overlay, .thread-panel-overlay, .lightbox-overlay, .emoji-picker, .reply-preview, .search-results, .conversations, .user-panel-content';
+  const isKbAllowed = (t) => t && typeof t.closest === 'function' && !!t.closest(KB_ALLOW_SELECTOR);
+  const blockKbScroll = (e) => { if (!isKbAllowed(e.target)) e.preventDefault(); };
+  let kbGuardAttached = false;
+  const attachKbGuard = () => {
+    if (kbGuardAttached) return;
+    document.addEventListener('touchmove', blockKbScroll, { passive: false, capture: true });
+    document.addEventListener('wheel', blockKbScroll, { passive: false, capture: true });
+    // Pin the layout viewport so iOS/the browser can't pan the page behind the
+    // keyboard (preserving any existing scroll offset).
+    document.body.style.position = 'fixed';
+    document.body.style.top = `${-window.scrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.classList.add('kb-open');
+    kbGuardAttached = true;
+  };
+  const detachKbGuard = () => {
+    if (!kbGuardAttached) return;
+    document.removeEventListener('touchmove', blockKbScroll, { capture: true });
+    document.removeEventListener('wheel', blockKbScroll, { capture: true });
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.left = '';
+    document.body.style.right = '';
+    document.body.classList.remove('kb-open');
+    kbGuardAttached = false;
+  };
   const syncVisualViewport = () => {
     const vv = window.visualViewport;
     const app = document.getElementById('chatApp');
@@ -30,6 +61,9 @@ if (window.visualViewport) {
       // Keyboard open — shrink the shell to the visible area (like Android native).
       app.style.height = `${vvH}px`;
       if (isWeb) {
+        // Lock the background: block page/visual-viewport panning, keep the
+        // chat messages (and overlays) scrollable.
+        attachKbGuard();
         // iOS pans the visual viewport while fixed elements stay on the layout
         // viewport; pin the shell to the visual viewport so the composer sits
         // exactly above the keyboard. No-op on Android web (offsetTop stays 0).
@@ -49,7 +83,8 @@ if (window.visualViewport) {
         }
       }
     } else if (isWeb) {
-      // Keyboard closed — restore the full-screen shell.
+      // Keyboard closed — restore the full-screen shell and unlock the background.
+      detachKbGuard();
       app.style.height = '';
       app.style.top = '';
       const area = document.getElementById('chatArea');
