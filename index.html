@@ -19,8 +19,8 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="preload" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" as="style">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
-  <link rel="preload" href="css/style.css?v=1785939585140" as="style">
-  <link rel="stylesheet" href="css/style.css?v=1785939585140">
+  <link rel="preload" href="css/style.css?v=1786026262310" as="style">
+  <link rel="stylesheet" href="css/style.css?v=1786026262310">
   <script>
     try {
       localStorage.removeItem('theme_old');
@@ -50,11 +50,11 @@
       <form id="loginForm">
         <div class="form-group">
           <label>Username</label>
-          <input type="text" class="form-input" id="loginUsername" placeholder="Enter username" required>
+          <input type="text" class="form-input" id="loginUsername" placeholder="Enter username" autocomplete="username" required>
         </div>
         <div class="form-group">
           <label>Password</label>
-          <input type="password" class="form-input" id="loginPassword" placeholder="Enter password" required>
+          <input type="password" class="form-input" id="loginPassword" placeholder="Enter password" autocomplete="current-password" required>
         </div>
         <button type="submit" class="btn-primary">Login</button>
         <p class="error-msg" id="loginError"></p>
@@ -68,15 +68,15 @@
       <form id="signupForm" style="display:none;">
         <div class="form-group">
           <label>Display Name</label>
-          <input type="text" class="form-input" id="signupName" placeholder="Your display name">
+          <input type="text" class="form-input" id="signupName" placeholder="Your display name" autocomplete="name">
         </div>
         <div class="form-group">
           <label>Username (unique)</label>
-          <input type="text" class="form-input" id="signupUsername" placeholder="Choose a username" required>
+          <input type="text" class="form-input" id="signupUsername" placeholder="Choose a username" autocomplete="username" required>
         </div>
         <div class="form-group">
           <label>Password</label>
-          <input type="password" class="form-input" id="signupPassword" placeholder="Create password" required>
+          <input type="password" class="form-input" id="signupPassword" placeholder="Create password" autocomplete="new-password" required>
         </div>
         <button type="submit" class="btn-primary">Create Account</button>
         <p class="error-msg" id="signupError"></p>
@@ -828,21 +828,21 @@
   <script src="config.js"></script>
   <!-- Load the socket.io client locally to prevent network blockage on startup -->
   <script src="js/socket.io.min.js"></script>
-  <script src="js/color-picker.js?v=1785939585140"></script>
-  <script src="js/confetti.js?v=1785939585140"></script>
-  <script src="js/app.js?v=1785939585140"></script>
-  <script src="js/capacitor-integration.js?v=1785939585140"></script>
+  <script src="js/color-picker.js?v=1786026262310"></script>
+  <script src="js/confetti.js?v=1786026262310"></script>
+  <script src="js/app.js?v=1786026262310"></script>
+  <script src="js/capacitor-integration.js?v=1786026262310"></script>
   <!-- Premium animation layer (motion.dev � Framer Motion's engine, no React). Additive; app.js untouched. -->
   <script>
     if (!(window.Capacitor && window.Capacitor.isNativePlatform())) {
       const script = document.createElement('script');
       script.type = 'module';
-      script.src = 'js/motion.js?v=1785939585140';
+      script.src = 'js/motion.js?v=1786026262310';
       document.body.appendChild(script);
     }
   </script>
-  <script src="js/feedback.js?v=1785939585140"></script>
-  <script src="js/admin.js?v=1785939585140"></script>
+  <script src="js/feedback.js?v=1786026262310"></script>
+  <script src="js/admin.js?v=1786026262310"></script>
   <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
 
   <canvas id="confetti-canvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:9999;"></canvas>
