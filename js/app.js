@@ -11,188 +11,45 @@ if (/Android/i.test(navigator.userAgent)) {
 // surfaces get the same behavior.
 const IS_ANDROID_DEVICE = document.body.classList.contains('is-android') || /Android/i.test(navigator.userAgent);
 
-// ===== Mobile Visual Viewport Height Manager =====
-// Fixes keyboard layout on iOS Safari + legacy Android WebViews.
-// iOS Safari only shrinks the VISUAL viewport when the soft keyboard opens, and its
-// visualViewport resize/scroll events can fire late or not at all on some versions —
-// which leaves the composer floating mid-screen over the keyboard. So we ALSO re-sync
-// the app shell height on focusin/focusout (keyboard open/close), with a delayed second
-// pass that lands after the keyboard slide animation finishes.
-//
-// We also maintain the classic --vh custom property: 1% of the current viewport height
-// (spec: window.innerHeight * 0.01). Any element using height: calc(var(--vh, 1vh) * 100)
-// then tracks the keyboard automatically — the CSS-only 100dvh fallback cannot do that,
-// because dvh responds to the URL bar show/hide, not to the soft keyboard.
-const currentViewportHeight = () => {
-  // On iOS Safari the soft keyboard shrinks the VISUAL viewport while innerHeight can
-  // stay large; elsewhere (incl. desktop) the two are identical.
-  if (window.visualViewport) return window.visualViewport.height;
-  return window.innerHeight;
-};
-
-let lastAppliedVh = null;
-let lastAppliedHeight = null;
-// Set once the keyboard actually shrank the viewport, so the auto-clear below
-// can never fire during the focusin->keyboard-open race (vv shrinks late on iOS).
-let keyboardShrunk = false;
-const syncVisualViewport = () => {
-  const h = `${currentViewportHeight()}px`;
-  const vh = `${parseFloat(h) * 0.01}px`;
-  // Avoid redundant layout/repaint churn on every input focus (search, modals, …)
-  if (lastAppliedVh !== vh) {
-    document.documentElement.style.setProperty('--vh', vh);
-    lastAppliedVh = vh;
-  }
-  const chatAppEl = document.getElementById('chatApp');
-  if (chatAppEl && lastAppliedHeight !== h) {
-    chatAppEl.style.height = h;
-    lastAppliedHeight = h;
-  }
-  // Auto-clear the keyboard guard if the keyboard closes without a focusout
-  // (Android back button / OS dismiss): only act after the viewport actually
-  // grew back to full height.
-  if (IS_MOBILE_APP) {
-    const vp = parseFloat(h);
-    if (vp < window.innerHeight - 1) keyboardShrunk = true;
-    else if (keyboardShrunk) {
-      keyboardShrunk = false;
-      document.body.classList.remove('keyboard-open');
-      // Android back button / OS dismiss can close the keyboard without a
-      // focusout — clear the composer collapse too so the top nav can never
-      // stay hidden (same sticky-guard rationale as keyboard-open).
-      document.body.classList.remove('composer-focused');
-    }
-  }
-};
-
-const KEYBOARD_SETTLE_MS = 350;
-let keyboardSettleTimer = null;
-const scheduleKeyboardSync = () => {
-  syncVisualViewport();
-  clearTimeout(keyboardSettleTimer);
-  keyboardSettleTimer = setTimeout(syncVisualViewport, KEYBOARD_SETTLE_MS);
-};
-
-// ===== iOS Visual Viewport Pan Compensation =====
-// When the soft keyboard opens, iOS Safari pans the page (window.scrollY > 0)
-// to keep the focused input visible, and on iOS 15+ fixed elements move with
-// that pan — which is the "background moving" glitch. The app is a fixed shell
-// that lives at scroll 0, so restoring scrollY to 0 cancels the pan and keeps
-// the background perfectly still. scrollTo(0,0) is idempotent (no-op once at 0),
-// so it cannot oscillate or fight user scrolling.
-const compensateVisualViewportPan = () => {
-  if (!IS_MOBILE_APP) return;
-  // Gate on our own keyboard-open state (focusin/focusout driven) — more precise
-  // than the vv.height heuristic, which is also true when the iOS URL bar shows.
-  if (!document.body.classList.contains('keyboard-open')) return;
-  const scrollingEl = document.scrollingElement || document.documentElement;
-  if ((window.pageYOffset || 0) !== 0 || (scrollingEl && scrollingEl.scrollTop !== 0)) {
-    window.scrollTo(0, 0);
-  }
-};
-
+// Android 10 & Mobile Visual Viewport Height Manager (Fixes keyboard layout on legacy Android WebViews)
 if (window.visualViewport) {
+  const syncVisualViewport = () => {
+    const chatAppEl = document.getElementById('chatApp');
+    if (chatAppEl) {
+      chatAppEl.style.height = `${window.visualViewport.height}px`;
+    }
+  };
   window.visualViewport.addEventListener('resize', syncVisualViewport);
   window.visualViewport.addEventListener('scroll', syncVisualViewport);
-  window.visualViewport.addEventListener('resize', compensateVisualViewportPan);
-  window.visualViewport.addEventListener('scroll', compensateVisualViewportPan);
+  document.addEventListener('DOMContentLoaded', syncVisualViewport);
 }
-// The pan often surfaces as a plain document scroll (window.scrollY), so listen
-// there too — the handler is idempotent + gated, so this is free. Caveat: if a
-// given iOS version pans purely the visual viewport (offsetTop changes while
-// scrollY stays 0), nothing can counter-scroll it in JS; the --vh resize still
-// leaves the app sized correctly above the keyboard.
-window.addEventListener('scroll', compensateVisualViewportPan);
-window.addEventListener('resize', compensateVisualViewportPan);
-// Layout-viewport resize + orientation change (covers desktop, older Android, and
-// browsers without visualViewport support).
-window.addEventListener('resize', syncVisualViewport);
-window.addEventListener('orientationchange', syncVisualViewport);
 
-// Keyboard open/close fallback: focus entering/leaving a text field means the soft
-// keyboard is sliding up/down. Re-sync immediately + again after it settles.
-const isEditableTarget = (t) =>
-  t && ((t.matches && t.matches('input, textarea, select')) || t.isContentEditable);
-// True when the app runs on a phone/tablet (Capacitor shell or mobile browser) —
-// only those devices have a soft keyboard, so only they get the keyboard-open
-// guard that keeps floating elements (⌄ jump button) clear of the keyboard.
-const IS_MOBILE_APP = document.body.classList.contains('native-app');
-// Delayed removal so the ⌄ button doesn't flash back in while the keyboard is
-// still sliding down after blur (~300ms animation). Cleared on re-focus.
-let keyboardCloseTimer = null;
-// The app never scrolls the document itself, so the saved position is 0 — but we
-// capture/restore it anyway because iOS Safari can bump window.scrollY when it
-// pans the page on input focus.
-let savedDocScrollY = 0;
-// True when the focused editable is the chat COMPOSER specifically (vs. the
-// nav search box, login fields, modals…). Powers the "collapse the top nav for
-// a bigger chat area while the keyboard is up" behavior — only the composer
-// triggers it, so typing in the search box never hides the nav it lives in.
-const isComposerInput = (t) => !!t && t.id === 'messageInput';
-const setComposerFocused = (on) => {
-  document.body.classList.toggle('composer-focused', on);
-};
-document.addEventListener('focusin', (e) => {
-  if (isEditableTarget(e.target)) {
-    if (IS_MOBILE_APP) {
-      clearTimeout(keyboardCloseTimer);
-      document.body.classList.add('keyboard-open');
-      // The pan-compensation above restores scrollY when iOS pans the page to
-      // reveal the focused input. Remember the (normally 0) scroll position so
-      // it can be restored on blur as well.
-      savedDocScrollY = window.scrollY || 0;
+// ===== BACKGROUND SCROLL LOCK (web platform) =====
+// While any overlay/drawer/lightbox is open, add body.scroll-locked so the CSS
+// rule below pins every background scroller (overflow:hidden). Wheel/touch input
+// can then never move the content behind an open modal on the web.
+(function initScrollLock() {
+  if (!document.body) return;
+  const OVERLAY_SELECTORS = [
+    '.modal-overlay.show',
+    '.thread-panel-overlay.open',
+    '.lightbox-overlay.show'
+  ];
+  const EXTRA_IDS = ['p2pInfoModal'];
+  const hasOpenOverlay = () => {
+    if (document.querySelector(OVERLAY_SELECTORS.join(','))) return true;
+    for (const id of EXTRA_IDS) {
+      const el = document.getElementById(id);
+      if (el && el.style.display && el.style.display !== 'none') return true;
     }
-    // Composer-only collapse: only when the message input itself is focused.
-    // ANY other editable (nav search, login fields, thread input, modal
-    // inputs) must restore the nav IMMEDIATELY — the search box lives INSIDE
-    // the top-nav, so leaving composer-focused on while the user types in it
-    // would hide the very input they're using (the pending blur timer gets
-    // cleared by this focusin, so relying on the timer alone is not enough).
-    if (IS_MOBILE_APP) {
-      setComposerFocused(isComposerInput(e.target));
-      // While the composer is focused the nav collapses (height:0 + overflow:
-      // hidden), which would clip the mobile nav dropdown — close it the
-      // moment the composer takes focus so it can never be half-cut off.
-      if (isComposerInput(e.target)) {
-        const dd = document.getElementById('navDropdown');
-        if (dd) dd.classList.remove('show');
-      }
-    }
-    scheduleKeyboardSync();
-  }
-});
-document.addEventListener('focusout', (e) => {
-  if (isEditableTarget(e.target)) {
-    if (IS_MOBILE_APP) {
-      clearTimeout(keyboardCloseTimer);
-      // Restore the composer collapse IMMEDIATELY (not on the settle timer):
-      // the CSS transition slides the top nav back in PARALLEL with the
-      // keyboard's own ~300ms close animation, so it feels instant and smooth
-      // instead of popping back a beat later. keyboard-open still waits for
-      // the settle timer so the ⌄ jump button doesn't flash back mid-slide.
-      setComposerFocused(false);
-      keyboardCloseTimer = setTimeout(() => {
-        document.body.classList.remove('keyboard-open');
-        window.scrollTo(0, savedDocScrollY);
-      }, KEYBOARD_SETTLE_MS);
-    }
-    scheduleKeyboardSync();
-  }
-});
-// If the app is backgrounded while the input is focused (or Android's back button
-// dismisses the keyboard without blurring), make sure keyboard-open/-lock and the
-// composer collapse can't stick.
-document.addEventListener('visibilitychange', () => {
-  if (IS_MOBILE_APP && document.hidden) {
-    clearTimeout(keyboardCloseTimer);
-    document.body.classList.remove('keyboard-open');
-    setComposerFocused(false);
-  }
-});
-
-document.addEventListener('DOMContentLoaded', syncVisualViewport);
-// Run immediately too — this script may load after DOMContentLoaded already fired.
-syncVisualViewport();
+    return false;
+  };
+  const sync = () => document.body.classList.toggle('scroll-locked', hasOpenOverlay());
+  new MutationObserver(sync).observe(document.body, {
+    attributes: true, attributeFilter: ['class', 'style'], childList: true, subtree: true
+  });
+  sync();
+})();
 
 let currentUser = null;
 let socket = null;
@@ -2830,6 +2687,18 @@ function renderActiveChat() {
       closeAllDropdowns();
       if (willOpen) {
         dd.classList.add('show');
+        // Anchor the menu to the ⋮ button so it stays aligned in every layout
+        // (desktop header, and the full-screen mobile chat where the top-nav is
+        // hidden and the header sits at the very top). The fixed CSS offsets
+        // drift when the header moves, so measure the button and place the menu
+        // right under it — flipping above if it would overflow the viewport.
+        const rect = optBtn.getBoundingClientRect();
+        dd.style.right = Math.max(8, window.innerWidth - rect.right) + 'px';
+        const ddH = dd.offsetHeight || 0;
+        let top = rect.bottom + 6;
+        if (top + ddH > window.innerHeight - 8) top = Math.max(8, rect.top - ddH - 6);
+        top = Math.min(top, Math.max(8, window.innerHeight - ddH - 8));
+        dd.style.top = top + 'px';
         if (window.Nav && !window.Nav.has('chatDropdown')) {
           window.Nav.push('chatDropdown', () => dd.classList.remove('show'));
         }
@@ -4795,15 +4664,6 @@ messageInput.addEventListener('keydown', (e) => {
 });
 messageInput.addEventListener('focus', () => {
   scrollToBottom();
-  // Tapping the composer opens the soft keyboard — close the (+) overflow menu
-  // and (on mobile) hide the ⌄ jump button so neither can end up floating
-  // detached over the keyboard (iOS). Belt-and-braces alongside the CSS guard.
-  const ov = document.getElementById('overflowMenu');
-  if (ov) ov.classList.remove('show');
-  if (IS_MOBILE_APP) {
-    const jb = document.getElementById('jumpToLatestBtn');
-    if (jb) jb.classList.remove('show');
-  }
 });
 
 messageInput.addEventListener('input', () => {
@@ -7875,6 +7735,36 @@ try {
   }
 } catch (e) {}
 
+function applyChatAppShellBg() {
+  // The .chat-app shell uses the glass panel color, which is translucent — it
+  // lets the darker page color bleed through and exposes seams where the fixed
+  // shell meets the browser UI. Composite glass-over-page into ONE opaque color
+  // so the app background truly covers the whole screen, in every theme.
+  const el = document.getElementById('chatApp');
+  if (!el) return;
+  // Let the browser normalize any CSS color syntax (hex, rgba, named, hsl…) to
+  // rgb()/rgba() — then parse the canonical form.
+  const tmp = document.createElement('div');
+  const norm = (c) => { tmp.style.color = c; return tmp.style.color; };
+  const parse = (c) => {
+    const m = c.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?\s*\)/i);
+    return m ? [+m[1], +m[2], +m[3], m[4] == null ? 1 : parseFloat(m[4])] : null;
+  };
+  const cs = getComputedStyle(document.body);
+  const g = parse(norm(cs.getPropertyValue('--glass-bg').trim()));
+  const p = parse(norm(cs.getPropertyValue('--bg-page').trim()));
+  if (!g || !p) return;
+  const a = Math.min(1, Math.max(0, g[3]));
+  const r = Math.round(g[0] * a + p[0] * (1 - a));
+  const gg = Math.round(g[1] * a + p[1] * (1 - a));
+  const b = Math.round(g[2] * a + p[2] * (1 - a));
+  el.style.background = `rgb(${r}, ${gg}, ${b})`;
+  // Keep the browser status bar (theme-color) identical to the shell so no
+  // darker strip shows above the app on mobile web.
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) metaTheme.setAttribute('content', `rgb(${r}, ${gg}, ${b})`);
+}
+
 function applyUserSettings() {
   document.body.classList.remove('theme-midnight', 'theme-oled', 'theme-light', 'theme-custom');
   
@@ -7911,6 +7801,9 @@ function applyUserSettings() {
 
   document.body.classList.remove('font-small', 'font-medium', 'font-large');
   document.body.classList.add(`font-${userSettings.fontSize || 'medium'}`);
+
+  // Opaque composite for the app shell so the background fully covers the screen.
+  applyChatAppShellBg();
 }
 
 function openSettingsModal() {
@@ -8541,4 +8434,29 @@ window.checkBirthdayMessage = function(msg) {
       window.startConfetti();
     }
   }
+};
+
+// Love-message hook — the ❤️ twin of the 🔥 effect. When a message contains
+// love words/emoji, auto-play the heart burst on that bubble (both sides see
+// it: the sender's own echo and the receiver's live arrival).
+window.checkLoveMessage = function(msg) {
+  if (!msg || !msg.text) return;
+  if (!/(\blove\b|❤|💖|💕|💗|💘|😍|😘)/i.test(String(msg.text))) return;
+  if (typeof showHeartBurst !== 'function') return;
+  const findEl = () => chatMessages
+    ? chatMessages.querySelector(`[data-msg-id="${msg.id}"]`)
+    : null;
+  // The hook fires before renderMessage() appends the bubble, so find the
+  // element now, and if it's not there yet retry on the next tick right
+  // after the pending synchronous render.
+  // Dedupe: the hook can fire twice for the same self-sent message (new_message
+  // echo + message_sent), which would stack two bursts on one bubble.
+  const burstOnce = (target) => {
+    if (target && !target.querySelector('.heart-burst-container')) {
+      showHeartBurst(target);
+    }
+  };
+  const el = findEl();
+  if (el) { burstOnce(el); return; }
+  setTimeout(() => burstOnce(findEl()), 0);
 };
